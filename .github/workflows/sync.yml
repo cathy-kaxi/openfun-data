@@ -19,7 +19,8 @@ jobs:
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          echo "GOOGLE_CREDENTIALS length: ${{ env.GOOGLE_CREDENTIALS != '' }}"
+          echo "Starts with: ${GOOGLE_CREDENTIALS:0:30}"
+          echo "Ends with: ...${GOOGLE_CREDENTIALS: -30}"
       - name: Run sync
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
