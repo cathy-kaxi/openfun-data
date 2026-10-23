@@ -15,12 +15,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install google-api-python-client google-auth
-      - name: Save credentials
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: echo "$GOOGLE_CREDENTIALS" > /tmp/sa.json
       - name: Run sync
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SPREADSHEET_ID: 19NnLZAz5gdSXmD0SlfOslokQg1YrrvEehmproimdfJA
         run: python update_sheets.py
