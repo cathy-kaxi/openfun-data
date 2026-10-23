@@ -24,8 +24,8 @@ def main():
     records = data.get("records", [])
     print(f"Loaded {len(records)} records")
 
-    creds = Credentials.from_service_account_file(
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"], scopes=SCOPES)
+    creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
     svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
