@@ -15,6 +15,10 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install google-api-python-client google-auth
+      - name: Debug secret
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: echo "GOOGLE_CREDENTIALS length: ${#GOOGLE_CREDENTIALS}"
       - name: Run sync
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
