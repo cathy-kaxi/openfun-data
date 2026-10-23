@@ -1,4 +1,4 @@
-import json, os, re, sys
+import json, os, re, sys, base64
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -20,10 +20,19 @@ def parse_date_cell(v):
 
 def main():
     raw = os.environ["GOOGLE_CREDENTIALS"]
-    print(f"Cred length: {len(raw)}")
-    print(f"First 80: {raw[:80]}")
-    print(f"Last 80: {raw[-80:]}")
-    creds_info = json.loads(raw)
+    print(f"Length: {len(raw)}")
+    print(f"First 10 repr: {repr(raw[:10])}")
+    try:
+        creds_info = json.loads(raw)
+    except Exception as e:
+        print(f"Direct json.loads failed: {e}")
+        try:
+            decoded = base64.b64decode(raw).decode()
+            print(f"Base64 decode OK, length: {len(decoded)}")
+            creds_info = json.loads(decoded)
+        except Exception as e2:
+            print(f"Base64 also failed: {e2}")
+            sys.exit(1)
 
     with open("data.json") as f:
         data = json.load(f)
