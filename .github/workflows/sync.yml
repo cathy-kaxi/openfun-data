@@ -18,7 +18,8 @@ jobs:
       - name: Debug secret
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: echo "GOOGLE_CREDENTIALS length: ${#GOOGLE_CREDENTIALS}"
+        run: |
+          echo "GOOGLE_CREDENTIALS length: ${{ env.GOOGLE_CREDENTIALS != '' }}"
       - name: Run sync
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
