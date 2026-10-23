@@ -19,12 +19,17 @@ def parse_date_cell(v):
     return None
 
 def main():
+    raw = os.environ["GOOGLE_CREDENTIALS"]
+    print(f"Cred length: {len(raw)}")
+    print(f"First 80: {raw[:80]}")
+    print(f"Last 80: {raw[-80:]}")
+    creds_info = json.loads(raw)
+
     with open("data.json") as f:
         data = json.load(f)
     records = data.get("records", [])
     print(f"Loaded {len(records)} records")
 
-    creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS"])
     creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
     svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
