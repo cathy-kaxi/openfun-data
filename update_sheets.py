@@ -46,7 +46,7 @@ def main():
     sheet_id = sheet["properties"]["sheetId"]
     print(f"Sheet: {sheet_name} (id={sheet_id})")
 
-    # Step 1: Read existing A column (only rows with values)
+    # Step 1: Read existing A column
     dv = svc.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:A").execute()
     existing_values = dv.get("values", [])
@@ -74,18 +74,12 @@ def main():
             extra_needed[ymd] = count - existing_count
             print(f"  Need {extra_needed[ymd]} extra rows for {date_str} (have {existing_count}, need {count})")
 
-    # Step 3: Calculate insert positions and date writes
-    # We need to insert rows and write dates to them
-    # Strategy:
-    # - For each date needing extra rows, find the last row of that date
-    # - Insert num_extra rows right after it
-    # - Write the date to those new rows
-
-    # Collect all insert operations (position, num_rows, ymd)
+    # Step 3: Calculate insert positions
+    # For each date needing extra rows, find the last row of that date
+    # We insert num_extra rows right after the last row of that date
     insert_ops = []  # list of (insert_at_1based, num_rows, ymd)
 
     for ymd, num_extra in extra_needed.items():
-        # Find last row with this date
         last_row = None
         for i, v in enumerate(existing):
             if parse_date_cell(v) == ymd:
@@ -93,13 +87,10 @@ def main():
         if last_row is None:
             print(f"  Warning: date {ymd} not found in sheet, skip")
             continue
-        insert_at = last_row + 1  # insert after this row
+        insert_at = last_row + 1
         insert_ops.append((insert_at, num_extra, ymd))
         y, m, d = ymd
         print(f"  Plan: insert {num_extra} row(s) at position {insert_at} (after {y}-{m}-{d})")
-
-    # Sort insert ops by position ascending (top to bottom) for calculation
-    insert_ops.sort(key=lambda x: x[0])
 
     # Step 4: Perform row inserts (bottom to top so positions don't shift)
     if insert_ops:
@@ -124,35 +115,61 @@ def main():
             ).execute()
             print(f"Done: inserted {len(insert_requests)} row groups")
 
-    # Step 5: Write dates to newly inserted rows
-    # We know exactly where we inserted, so we can write dates directly
-    date_updates = []  # list of (row_num, col, value)
-    for insert_at, num_rows, ymd in insert_ops:
-        y, m, d = ymd
-        date_str = f"{y}/{m}/{d}"
-        for i in range(num_rows):
-            row_num = insert_at + i  # 1-based
-            date_updates.append({
-                "range": f"'{sheet_name}'!A{row_num}",
-                "values": [[date_str]]
-            })
-            print(f"  Writing date {date_str} to row {row_num}")
+    # Step 5: Now read A column again (after inserts)
+    # We need to read more rows to capture the newly inserted empty rows
+    # Let's read a large range (e.g., 100 rows)
+    max_rows_to_read = 100
+    dv = svc.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A1:A{max_rows_to_read}").execute()
+    existing_values = dv.get("values", [])
+    # Pad to max_rows_to_read
+    existing = []
+    for i in range(max_rows_to_read):
+        if i < len(existing_values) and existing_values[i]:
+            existing.append(existing_values[i][0] if existing_values[i] else "")
+        else:
+            existing.append("")
+    print(f"Read {len(existing)} rows from A column")
 
-    if date_updates:
+    # Step 6: Fill empty rows with the date from the row above
+    # Scan top to bottom, track the last seen date
+    date_fills = []  # list of (row_num, date_str)
+    last_date = None
+    for i, v in enumerate(existing):
+        row_num = i + 1  # 1-based
+        current_date = parse_date_cell(v)
+        if current_date:
+            last_date = current_date
+        else:
+            # This row is empty, fill with last_date
+            if last_date:
+                y, m, d = last_date
+                date_str = f"{y}/{m}/{d}"
+                date_fills.append({
+                    "range": f"'{sheet_name}'!A{row_num}",
+                    "values": [[date_str]]
+                })
+                print(f"  Filling row {row_num} with date {date_str}")
+
+    if date_fills:
         svc.spreadsheets().values().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
-            body={"valueInputOption": "RAW", "data": date_updates}
+            body={"valueInputOption": "RAW", "data": date_fills}
         ).execute()
-        print(f"Done: wrote dates to {len(date_updates)} new rows")
+        print(f"Done: filled {len(date_fills)} empty rows with dates")
 
-    # Step 6: Now re-read A column (now includes the new rows we just wrote dates to)
+    # Step 7: Re-read A column (now all rows have dates)
     dv = svc.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:A").execute()
+        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A1:A{max_rows_to_read}").execute()
     existing_values = dv.get("values", [])
-    existing = [(r[0] if r else "") for r in existing_values]
-    print(f"Existing rows after inserts: {len(existing)}")
+    existing = []
+    for i in range(max_rows_to_read):
+        if i < len(existing_values) and existing_values[i]:
+            existing.append(existing_values[i][0] if existing_values[i] else "")
+        else:
+            existing.append("")
 
-    # Step 7: Match each record to a row and write values
+    # Step 8: Match each record to a row and write values
     date_used_rows = defaultdict(list)
     value_updates = []
 
@@ -172,7 +189,7 @@ def main():
                 break
 
         if target_row is None:
-            print(f"  {date_str}: row not found after insert, skip")
+            print(f"  {date_str}: row not found, skip")
             continue
 
         date_used_rows[target_ymd].append(target_row)
