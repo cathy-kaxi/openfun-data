@@ -6,6 +6,9 @@ on:
     paths: [genspicy_data.json]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
