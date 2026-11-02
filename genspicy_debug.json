@@ -7,7 +7,7 @@
     "每周账单"
   ],
   "target_sheet": "genspicy",
-  "existing_dates_count": 13,
+  "existing_dates_count": 24,
   "existing_dates_sample": [
     "日期",
     "2026/10/21",
@@ -21,7 +21,9 @@
     "2026/10/29",
     "2026/10/30",
     "2026/10/31",
-    "2026/11/1"
+    "2026/11/1",
+    "2026/11/2",
+    "2026/11/3"
   ],
   "matched_2026-10-21": "row 2",
   "matched_2026-10-22": "row 3",
