@@ -1,6 +1,6 @@
 {
   "errors": [],
-  "loaded_records": 12,
+  "loaded_records": 13,
   "all_sheets": [
     "genspicy",
     "余额表",
@@ -37,5 +37,6 @@
   "matched_2026-10-30": "row 11",
   "matched_2026-10-31": "row 12",
   "matched_2026-11-01": "row 13",
-  "updated_cells": 36
+  "matched_2026-11-02": "row 14",
+  "updated_cells": 39
 }
