@@ -52,6 +52,13 @@ def main():
     existing_values = dv.get("values", [])
     print(f"Existing rows in A column: {len(existing_values)}")
 
+    # DEBUG: print all rows around 10/28
+    print("=== DEBUG: A column rows 14-22 ===")
+    for i in range(13, min(22, len(existing_values))):
+        v = existing_values[i][0] if existing_values[i] else "(empty)"
+        print(f"  row {i+1}: {v!r} -> parsed: {parse_date_cell(v)}")
+    print("=== END DEBUG ===")
+
     # Step 2: Determine which dates need extra rows
     from collections import defaultdict
     date_record_count = defaultdict(int)
@@ -91,16 +98,9 @@ def main():
         print(f"  Plan: insert {num_extra} row(s) after row {last_row} ({y}-{m}-{d}), original insert position = {original_insert_at}")
 
     # Step 4: Perform row inserts (BOTTOM to TOP so positions don't shift for upper inserts)
-    # Sort by original_insert_at descending (bottom to top)
     insert_ops.sort(key=lambda x: x[0], reverse=True)
     total_inserts = len(insert_ops)
 
-    # Calculate ACTUAL row positions after all inserts
-    # When inserting bottom-up:
-    # - The first insert (bottommost) gets pushed DOWN by all subsequent inserts (which are above it)
-    # - The last insert (topmost) doesn't get pushed
-    # Formula: actual_row = original_insert_at + (number of inserts ABOVE this one)
-    # Since we go bottom-up, the number of inserts ABOVE = total_inserts - i - 1
     insert_ops_with_actual_pos = []
     for i, (orig_at, num_rows, ymd) in enumerate(insert_ops):
         pushes_from_above = total_inserts - i - 1
@@ -111,13 +111,13 @@ def main():
 
     if insert_ops:
         insert_requests = []
-        for orig_at, num_rows, ymd in insert_ops:  # use original positions for the insert API
+        for orig_at, num_rows, ymd in insert_ops:
             insert_requests.append({
                 "insertDimension": {
                     "range": {
                         "sheetId": sheet_id,
                         "dimension": "ROWS",
-                        "startIndex": orig_at - 1,  # 0-based
+                        "startIndex": orig_at - 1,
                         "endIndex": orig_at - 1 + num_rows
                     },
                     "inheritFromBefore": False
@@ -130,7 +130,7 @@ def main():
         ).execute()
         print(f"Done: inserted {len(insert_requests)} row groups")
 
-    # Step 5: Write dates to newly inserted rows (using ACTUAL positions)
+    # Step 5: Write dates to newly inserted rows
     date_updates = []
     for actual_start_row, num_rows, ymd in insert_ops_with_actual_pos:
         y, m, d = ymd
@@ -150,7 +150,7 @@ def main():
         ).execute()
         print(f"Done: wrote dates to {len(date_updates)} new rows")
 
-    # Step 6: Re-read A column (now new rows have dates, so they appear in results)
+    # Step 6: Re-read A column
     dv = svc.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:A").execute()
     existing_values = dv.get("values", [])
