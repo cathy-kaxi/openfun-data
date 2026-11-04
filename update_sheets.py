@@ -19,6 +19,14 @@ def parse_date_cell(v):
     if m: return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
     return None
 
+def parse_line(v):
+    """Read G column line value, return '11' or '08'"""
+    if v is None or v == "": return ""
+    s = str(v).strip()
+    if s == "11": return "11"
+    if s in ("8", "08"): return "08"
+    return s
+
 def main():
     raw = os.environ["GOOGLE_CREDENTIALS"]
     print(f"Length: {len(raw)}")
@@ -55,17 +63,19 @@ def main():
     sheet_id = sheet["properties"]["sheetId"]
     print(f"Sheet: {sheet_name} (id={sheet_id})")
 
-    # Step 1: Read existing A column (before any inserts)
+    # Step 1: Read existing A:G columns (need G for line matching)
     dv = svc.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:A").execute()
+        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:G").execute()
     existing_values = dv.get("values", [])
-    print(f"Existing rows in A column: {len(existing_values)}")
+    print(f"Existing rows in A:G: {len(existing_values)}")
 
-    # DEBUG: print all rows around 10/28
-    print("=== DEBUG: A column rows 15-20 ===")
+    # DEBUG: print rows around 10/28
+    print("=== DEBUG: rows 15-20 (date | G line) ===")
     for i in range(14, min(20, len(existing_values))):
-        v = existing_values[i][0] if existing_values[i] else "(empty)"
-        print(f"  row {i+1}: {v!r} -> parsed: {parse_date_cell(v)}")
+        row = existing_values[i]
+        date_v = row[0] if len(row) > 0 else ""
+        g_v = row[6] if len(row) > 6 else ""
+        print(f"  row {i+1}: date={date_v!r}, G={g_v!r} -> parsed_date={parse_date_cell(date_v)}, line={parse_line(g_v)}")
     print("=== END DEBUG ===")
 
     # Step 2: Determine which dates need extra rows
@@ -159,37 +169,57 @@ def main():
         ).execute()
         print(f"Done: wrote dates to {len(date_updates)} new rows")
 
-    # Step 6: Re-read A column
+    # Step 6: Re-read A:G after inserts
     dv = svc.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:A").execute()
+        spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:G").execute()
     existing_values = dv.get("values", [])
     print(f"Existing rows after inserts: {len(existing_values)}")
 
-    # Step 7: Match each record to a row and write values
-    date_used_rows = defaultdict(list)
+    # Step 7: Match each record to a row using G column line value
     value_updates = []
+    matched_rows = set()
 
     for rec in records:
         date_str = rec["date"]
         y, m, d = [int(x) for x in date_str.split("-")]
         target_ymd = (y, m, d)
+        rec_line = rec.get("line", "11")  # default 11 for old records without line field
 
         target_row = None
-        used_rows = date_used_rows.get(target_ymd, [])
-        for i, v in enumerate(existing_values):
+        for i, row in enumerate(existing_values):
             row_num = i + 1
-            if row_num in used_rows:
+            if row_num in matched_rows:
                 continue
-            cell_val = v[0] if v else ""
-            if parse_date_cell(cell_val) == target_ymd:
+            cell_val = row[0] if len(row) > 0 else ""
+            if parse_date_cell(cell_val) != target_ymd:
+                continue
+            g_val = row[6] if len(row) > 6 else ""
+            row_line = parse_line(g_val)
+            # If row has no G value yet (new empty row), match by order
+            if row_line == "" or row_line is None:
+                # fallback: if this row is unused and date matches, take it
+                target_row = row_num
+                break
+            if row_line == rec_line:
                 target_row = row_num
                 break
 
         if target_row is None:
-            print(f"  {date_str}: row not found, skip")
+            # Fallback: any unused row with matching date
+            for i, row in enumerate(existing_values):
+                row_num = i + 1
+                if row_num in matched_rows:
+                    continue
+                cell_val = row[0] if len(row) > 0 else ""
+                if parse_date_cell(cell_val) == target_ymd:
+                    target_row = row_num
+                    break
+
+        if target_row is None:
+            print(f"  {date_str} ({rec_line}): row not found, skip")
             continue
 
-        date_used_rows[target_ymd].append(target_row)
+        matched_rows.add(target_row)
 
         for col, val in rec.items():
             if col in ("date", "line") or val is None:
@@ -198,8 +228,7 @@ def main():
                 "range": f"'{sheet_name}'!{col}{target_row}",
                 "values": [[val]]
             })
-        line_label = rec.get("line", "")
-        print(f"  {date_str} ({line_label}) -> row {target_row}")
+        print(f"  {date_str} ({rec_line}) -> row {target_row}")
 
     if value_updates:
         svc.spreadsheets().values().batchUpdate(
