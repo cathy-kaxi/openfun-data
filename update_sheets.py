@@ -20,7 +20,6 @@ def parse_date_cell(v):
     return None
 
 def parse_line(v):
-    """Read G column line value, return '11' or '08'"""
     if v is None or v == "": return ""
     s = str(v).strip()
     if s == "11": return "11"
@@ -50,7 +49,6 @@ def main():
     svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-    # Find target sheet by sheetId=0
     sheet = None
     for s in meta["sheets"]:
         if s["properties"]["sheetId"] == TARGET_SHEET_ID:
@@ -63,22 +61,11 @@ def main():
     sheet_id = sheet["properties"]["sheetId"]
     print(f"Sheet: {sheet_name} (id={sheet_id})")
 
-    # Step 1: Read existing A:G columns (need G for line matching)
     dv = svc.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:G").execute()
     existing_values = dv.get("values", [])
     print(f"Existing rows in A:G: {len(existing_values)}")
 
-    # DEBUG: print rows around 10/28
-    print("=== DEBUG: rows 15-20 (date | G line) ===")
-    for i in range(14, min(20, len(existing_values))):
-        row = existing_values[i]
-        date_v = row[0] if len(row) > 0 else ""
-        g_v = row[6] if len(row) > 6 else ""
-        print(f"  row {i+1}: date={date_v!r}, G={g_v!r} -> parsed_date={parse_date_cell(date_v)}, line={parse_line(g_v)}")
-    print("=== END DEBUG ===")
-
-    # Step 2: Determine which dates need extra rows
     from collections import defaultdict
     date_record_count = defaultdict(int)
     for rec in records:
@@ -90,33 +77,26 @@ def main():
         if ymd:
             date_existing_count[ymd] += 1
 
-    extra_needed = {}  # ymd -> num_extra_rows
+    extra_needed = {}
     for date_str, count in date_record_count.items():
         y, m, d = [int(x) for x in date_str.split("-")]
         ymd = (y, m, d)
         existing_count = date_existing_count.get(ymd, 0)
         if count > existing_count:
             extra_needed[ymd] = count - existing_count
-            print(f"  Need {extra_needed[ymd]} extra rows for {date_str} (have {existing_count}, need {count})")
 
-    # Step 3: For each date needing extra rows, find the LAST row of that date
-    insert_ops = []  # list of (original_insert_at_row_1based, num_rows, ymd)
-
+    insert_ops = []
     for ymd, num_extra in extra_needed.items():
         last_row = None
         for i, v in enumerate(existing_values):
             cell_val = v[0] if v else ""
             if parse_date_cell(cell_val) == ymd:
-                last_row = i + 1  # 1-based
+                last_row = i + 1
         if last_row is None:
-            print(f"  Warning: date {ymd} not found in sheet, skip")
             continue
-        original_insert_at = last_row + 1  # insert after this row
+        original_insert_at = last_row + 1
         insert_ops.append((original_insert_at, num_extra, ymd))
-        y, m, d = ymd
-        print(f"  Plan: insert {num_extra} row(s) after row {last_row} ({y}-{m}-{d}), original insert position = {original_insert_at}")
 
-    # Step 4: Perform row inserts (BOTTOM to TOP so positions don't shift for upper inserts)
     insert_ops.sort(key=lambda x: x[0], reverse=True)
     total_inserts = len(insert_ops)
 
@@ -125,8 +105,6 @@ def main():
         pushes_from_above = total_inserts - i - 1
         actual_start_row = orig_at + pushes_from_above
         insert_ops_with_actual_pos.append((actual_start_row, num_rows, ymd))
-        y, m, d = ymd
-        print(f"  Insert {i}: original={orig_at}, pushed by={pushes_from_above}, actual_start={actual_start_row} ({y}-{m}-{d})")
 
     if insert_ops:
         insert_requests = []
@@ -142,14 +120,11 @@ def main():
                     "inheritFromBefore": False
                 }
             })
-
         svc.spreadsheets().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
             body={"requests": insert_requests}
         ).execute()
-        print(f"Done: inserted {len(insert_requests)} row groups")
 
-    # Step 5: Write dates to newly inserted rows
     date_updates = []
     for actual_start_row, num_rows, ymd in insert_ops_with_actual_pos:
         y, m, d = ymd
@@ -160,22 +135,17 @@ def main():
                 "range": f"'{sheet_name}'!A{row_num}",
                 "values": [[date_str]]
             })
-            print(f"  Writing date {date_str} to row {row_num}")
 
     if date_updates:
         svc.spreadsheets().values().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
             body={"valueInputOption": "RAW", "data": date_updates}
         ).execute()
-        print(f"Done: wrote dates to {len(date_updates)} new rows")
 
-    # Step 6: Re-read A:G after inserts
     dv = svc.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, range=f"'{sheet_name}'!A:G").execute()
     existing_values = dv.get("values", [])
-    print(f"Existing rows after inserts: {len(existing_values)}")
 
-    # Step 7: Match each record to a row using G column line value
     value_updates = []
     matched_rows = set()
 
@@ -183,7 +153,7 @@ def main():
         date_str = rec["date"]
         y, m, d = [int(x) for x in date_str.split("-")]
         target_ymd = (y, m, d)
-        rec_line = rec.get("line", "11")  # default 11 for old records without line field
+        rec_line = rec.get("line", "11")
 
         target_row = None
         for i, row in enumerate(existing_values):
@@ -195,9 +165,7 @@ def main():
                 continue
             g_val = row[6] if len(row) > 6 else ""
             row_line = parse_line(g_val)
-            # If row has no G value yet (new empty row), match by order
             if row_line == "" or row_line is None:
-                # fallback: if this row is unused and date matches, take it
                 target_row = row_num
                 break
             if row_line == rec_line:
@@ -205,7 +173,6 @@ def main():
                 break
 
         if target_row is None:
-            # Fallback: any unused row with matching date
             for i, row in enumerate(existing_values):
                 row_num = i + 1
                 if row_num in matched_rows:
@@ -230,10 +197,28 @@ def main():
             })
         print(f"  {date_str} ({rec_line}) -> row {target_row}")
 
+    # Fix Q column: 注册安装转化率 = O/L, write formula for all data rows
+    formula_updates = []
+    for row_num in range(3, len(existing_values) + 1):
+        # Skip empty rows
+        if row_num - 1 >= len(existing_values):
+            break
+        cell_val = existing_values[row_num - 1][0] if existing_values[row_num - 1] else ""
+        if parse_date_cell(cell_val) is None:
+            continue
+        formula_updates.append({
+            "range": f"'{sheet_name}'!Q{row_num}",
+            "values": [[f"=IFERROR(O{row_num}/L{row_num},0)"]]
+        })
+    print(f"Writing Q column formulas for {len(formula_updates)} rows")
+
+    if formula_updates:
+        value_updates.extend(formula_updates)
+
     if value_updates:
         svc.spreadsheets().values().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
-            body={"valueInputOption": "RAW", "data": value_updates}
+            body={"valueInputOption": "USER_ENTERED", "data": value_updates}
         ).execute()
         print(f"Done: {len(value_updates)} cells updated")
     else:
