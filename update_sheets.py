@@ -5,6 +5,7 @@ from googleapiclient.discovery import build
 
 SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+TARGET_SHEET_ID = 0  # Al-CAI-11 sheet has gid=0
 
 def parse_date_cell(v):
     if v is None or v == "": return None
@@ -41,7 +42,15 @@ def main():
     svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-    sheet = meta["sheets"][0]
+    # Find target sheet by sheetId=0
+    sheet = None
+    for s in meta["sheets"]:
+        if s["properties"]["sheetId"] == TARGET_SHEET_ID:
+            sheet = s
+            break
+    if not sheet:
+        print("ERROR: target sheet id=0 not found!")
+        sys.exit(1)
     sheet_name = sheet["properties"]["title"]
     sheet_id = sheet["properties"]["sheetId"]
     print(f"Sheet: {sheet_name} (id={sheet_id})")
@@ -53,8 +62,8 @@ def main():
     print(f"Existing rows in A column: {len(existing_values)}")
 
     # DEBUG: print all rows around 10/28
-    print("=== DEBUG: A column rows 14-22 ===")
-    for i in range(13, min(22, len(existing_values))):
+    print("=== DEBUG: A column rows 15-20 ===")
+    for i in range(14, min(20, len(existing_values))):
         v = existing_values[i][0] if existing_values[i] else "(empty)"
         print(f"  row {i+1}: {v!r} -> parsed: {parse_date_cell(v)}")
     print("=== END DEBUG ===")
