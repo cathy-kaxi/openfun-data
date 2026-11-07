@@ -4,7 +4,8 @@
   "all_sheets": [
     "genspicy",
     "余额表",
-    "每周账单"
+    "每周账单",
+    "月账单"
   ],
   "target_sheet": "genspicy",
   "existing_dates_count": 24,
