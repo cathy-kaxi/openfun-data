@@ -8,7 +8,7 @@
     "月账单"
   ],
   "target_sheet": "genspicy",
-  "existing_dates_count": 20,
+  "existing_dates_count": 21,
   "existing_dates_sample": [
     "日期",
     "2026/10/21",
@@ -22,9 +22,9 @@
     "2026/10/29",
     "2026/10/30",
     "2026/10/31",
+    "10月",
     "2026/11/1",
-    "2026/11/2",
-    "2026/11/3"
+    "2026/11/2"
   ],
   "matched_2026-10-21": "row 2",
   "matched_2026-10-22": "row 3",
@@ -37,10 +37,10 @@
   "matched_2026-10-29": "row 10",
   "matched_2026-10-30": "row 11",
   "matched_2026-10-31": "row 12",
-  "matched_2026-11-01": "row 13",
-  "matched_2026-11-02": "row 14",
-  "matched_2026-11-03": "row 15",
-  "matched_2026-11-04": "row 16",
-  "matched_2026-11-05": "row 17",
+  "matched_2026-11-01": "row 14",
+  "matched_2026-11-02": "row 15",
+  "matched_2026-11-03": "row 16",
+  "matched_2026-11-04": "row 17",
+  "matched_2026-11-05": "row 18",
   "updated_cells": 48
 }
